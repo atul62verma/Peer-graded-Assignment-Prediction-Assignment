@@ -1,0 +1,216 @@
+---
+title: "Coursera Practical Machine Learning Course Project"
+author: "Atul Verma"
+date: "May 13, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background and Introduction
+
+
+Using devices such as *Jawbone Up, Nike FuelBand*, and *Fitbit* is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+In this project, we will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participant They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The five ways are exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Only Class A corresponds to correct performance. The goal of this project is to predict the manner in which they did the exercise, i.e., Class A to E. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+**The Figure below shows the locations of accelerometers (taken from the publication).**
+
+image: ![](C:\Users\Atul\Desktop\Coursera - Data science\Coursera Courses\practical machine learning - 8\wk4\project\image.png)
+
+
+***
+
+## Data
+
+The training and test data for this project were obtained from the following websites:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+
+```{r data loading and processing}
+# load data locally
+training <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testing <- read.csv("pml-testing.csv", na.strings = c("NA", ""))
+dim(training)
+dim(testing)
+```
+
+It was determined that training dataset contains 19622 observations and 160 variables, and the testing data set contains 20 observations and the same variables as the training set.
+
+
+***
+
+
+## Data Preparation
+
+The columns with missing values (predictors) were deleted. The variables that don't make intuitive sense to be included in the prediction - X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window and num_window were also removed from further analysis.
+
+```{r Data munging }
+set.seed(1)
+training <- training[, colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0]
+trainData <- training[, -c(1:7)]
+testData <- testing[, -c(1:7)]
+dim(trainData)
+dim(testData)
+```
+
+The cleaned data sets trainData and testData both contained 53 columns with the same first 52 variables and the last column namely, classe. The trainData and TestData have 19622 and 20 rows, respectively.
+
+## Prepare the data for training
+
+The function *createDataPartition* of the caret package was used to split the data into a training and a cross-validation data set. 
+
+```{r message = FALSE, warning = FALSE}
+library(caret); library(rattle); library(rpart); library(rpart.plot)
+library(randomForest); library(repmis)
+
+set.seed(10)
+inTrain <- createDataPartition(y = trainData$classe, p = 0.7, list = FALSE)
+# The index inTrain is used to split the data.
+training <- trainData[inTrain, ]
+# data set for cross validation 
+valid <- trainData[-inTrain, ]
+
+```
+
+
+***
+
+
+## Model Selection
+
+As many as 52 columns (possible variables) were present in the data sets and it was determined that the use of prediction algorithms such as **classification trees** and **random forest** could be useful. The power of **Random forest** in terms of handling a large data set with higher dimensionality was the key factor to try out the random forest algorithm. It can handle large number of input variables and identify most significant variables so it is considered as one of the dimensionality reduction methods. Further, the model outputs Importance of variable, which can be a very handy feature on some known data set.
+
+
+
+
+
+#### 5–Fold Cross–Validation 
+
+Here, we randomly split the data into 5 distinct blocks of roughly equal
+size.
+
++ Step 1 We leave out the first block of data and fit a model.
+
++ Step 2 This model is used to predict the held-out block
+
++ Step 3 We continue this process until we’ve predicted all 5 held–out blocks
+
+The final performance is based on the hold-out predictions. Please note that K= 5 or 10 are most commonly used default parameters for cross validation.
+
+###Model I - Classification Trees
+
+```{r message = FALSE, warning = FALSE}
+control <- trainControl(method = "cv", number = 5)
+fit_rpart <- train(classe ~ ., data = training, method = "rpart", 
+                   trControl = control)
+fancyRpartPlot(fit_rpart$finalModel)
+# predict outcome using the validation set
+predict_rpart <- predict(fit_rpart, valid)
+conf_rpart <- confusionMatrix(valid$classe, predict_rpart)
+print(accuracy_rpart <- conf_rpart$overall[1])
+```
+
+It was concluded that **classification tree does not predict the outcome** *classe* well enough as refected by the poor accuracy rate of ~ 0.5.
+
+## Model II - Random Forest
+
+Random Forest algorithm was attempted next.
+
+```{r message = FALSE, warning = FALSE}
+fit_rf <- train(classe ~ ., data = training, method = "rf", 
+                   trControl = control)
+print(fit_rf, digits = 4)
+
+```
+
+An excellent accuracy was achieved. Next, the outcome from the validation set was predicted. The function *confusionMatrix* was use to calculate the accuracy of the prediction.
+
+```{r message = FALSE, warning = FALSE}
+# predict outcomes using validation set
+valid_rf <- predict(fit_rf, valid)
+# Show prediction result
+(conf_rf <- confusionMatrix(valid$classe, valid_rf))
+(accuracy_rf <- conf_rf$overall[1])
+
+# percent accuracy is calculated below
+percent_accuracy <- round(accuracy_rf *100, 2)
+percent_serror <- round((1 - accuracy_rf)*100,2)
+```
+
+
+
+As shown by the the accuracy, `r paste(percent_accuracy, "%")`, random forest appears to be an excellent algorithm to model the given dataset. Random forests chooses a subset of predictors at each split and *decorrelate* the trees. This leads to high accuracy, although this algorithm is sometimes difficult to interpret and computationally inefficient. It may be possible to further tune the model to cut down on the computation time. However, no such attempts were made at this point.
+
+
+***
+
+
+## Prediction on the Testing Set
+
+Finally, we have used the above derived model to predict the outcome from the testing dats set.
+
+```{r message = FALSE, warning = FALSE}
+pred <- predict(fit_rf, testData)
+
+# convert predictions to character vector
+pred_ch <- as.character(pred)
+# create function to write predictions to files
+pml_write_files <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+# create prediction files to submit
+pml_write_files(pred_ch)
+
+```
+
+## Prediction Results
+
+**The model was used on the testData set and prediction results are presented below:**
+
+
+```{r}
+# Show prediction result
+print(pred)
+```
+
+
+
+***
+
+
+##Out-of-sample error
+
+Please note that the accuracy of prediction is `r paste(percent_accuracy, "%")`. Hence, the **out-of-sample error, (100-accuracy)** is `r paste(percent_serror, "%")`.
+
+
+***
+
+
+##Variable Importance 
+
+```{r message = FALSE, warning = FALSE}
+vi <- varImp(fit_rf)$importance
+vi[head(order(unlist(vi), decreasing = TRUE), 10L), , drop = FALSE]
+
+```
+
+**The top ten variables are listed above in the table.**
+
+
+***
+
+
+## The source of the data
+The assignment is based on data of weight lifting exercises. It has been published:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. [Qualitative Activity Recognition of Weight Lifting Exercises.](http://groupware.les.inf.puc-rio.br/har#ixzz34irPKNuZ) Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). Stuttgart, Germany: ACM SIGCHI, 2013.
+
